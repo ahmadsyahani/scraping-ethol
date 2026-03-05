@@ -2,6 +2,7 @@ import json
 import time
 import os
 import os.path
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -15,16 +16,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+# Load data rahasia dari file .env
+load_dotenv()
 
-# Nama folder tempat nyimpen hasil generate
+SCOPES = ['https://www.googleapis.com/auth/calendar.events']
 OUTPUT_DIR = "output"
 
-def update_files(data):
-    # Bikin folder otomatis kalau belum ada
+def update_files(data, student_name, student_class):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    # Simpan JSON ke dalam folder output
     json_path = os.path.join(OUTPUT_DIR, 'tugas.json')
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
@@ -41,7 +41,7 @@ def update_files(data):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ETHOL Dashboard</title>
+        <title>ETHOL Dashboard | {student_name}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
@@ -53,7 +53,6 @@ def update_files(data):
             .custom-scrollbar::-webkit-scrollbar-thumb {{ background: #27272a; border-radius: 10px; }}
             .custom-scrollbar::-webkit-scrollbar-thumb:hover {{ background: #3f3f46; }}
             
-            /* Animasi Modal */
             .modal-overlay {{ opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }}
             .modal-overlay.active {{ opacity: 1; pointer-events: auto; }}
             .modal-content {{ transform: translateY(20px) scale(0.95); opacity: 0; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }}
@@ -66,8 +65,8 @@ def update_files(data):
             <header class="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-800 pb-8">
                 <div>
                     <div class="flex flex-wrap items-center gap-3 mb-3">
-                        <span class="px-3 py-1 rounded-md bg-zinc-800/80 text-zinc-400 text-[10px] font-bold uppercase tracking-widest border border-zinc-700/50">PENS • 2 D4 IT B</span>
-                        <span class="px-3 py-1 rounded-md bg-cyan-500/10 text-cyan-400 text-[10px] font-bold uppercase tracking-widest border border-cyan-500/20">Ahmad Syahani</span>
+                        <span class="px-3 py-1 rounded-md bg-zinc-800/80 text-zinc-400 text-[10px] font-bold uppercase tracking-widest border border-zinc-700/50">{student_class}</span>
+                        <span class="px-3 py-1 rounded-md bg-cyan-500/10 text-cyan-400 text-[10px] font-bold uppercase tracking-widest border border-cyan-500/20">{student_name}</span>
                     </div>
                     <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-zinc-100">ETHOL Tasks.</h1>
                 </div>
@@ -206,12 +205,19 @@ def update_files(data):
                 if (files.length > 0) {{
                     filesSection.classList.remove('hidden');
                     files.forEach(f => {{
-                        const fileName = f.file_name || f.file || "Download Lampiran";
-                        const fileUrl = f.file || "#";
-                        const linkStr = fileUrl.startsWith('http') ? fileUrl : `https://ethol.pens.ac.id/api/upload/tugas/${{fileUrl}}`;
+                        const fileUrl = f.path || "#";
+                        let fileName = "Download Lampiran";
+                        
+                        if (fileUrl !== "#") {{
+                            try {{
+                                fileName = decodeURIComponent(fileUrl.split('/').pop());
+                            }} catch(e) {{
+                                fileName = fileUrl.split('/').pop();
+                            }}
+                        }}
 
                         filesList.innerHTML += `
-                            <a href="${{linkStr}}" target="_blank" class="flex items-center gap-3 p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 hover:border-zinc-600 hover:bg-[#27272a] transition-all group">
+                            <a href="${{fileUrl}}" target="_blank" class="flex items-center gap-3 p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 hover:border-zinc-600 hover:bg-[#27272a] transition-all group">
                                 <div class="p-2 bg-indigo-500/10 rounded-lg text-indigo-400">
                                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                 </div>
@@ -240,19 +246,23 @@ def update_files(data):
     </html>
     """
     
-    # Simpan HTML ke dalam folder output
     html_path = os.path.join(OUTPUT_DIR, 'index.html')
     with open(html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
 
 def main():
-    net_id = "ahmadsyahani06@it.student.pens.ac.id"
-    password = "Syahani06"
+    net_id = os.getenv("ETHOL_NET_ID")
+    password = os.getenv("ETHOL_PASSWORD")
+    student_name = os.getenv("STUDENT_NAME", "Mahasiswa PENS")
+    student_class = os.getenv("STUDENT_CLASS", "PENS")
     
-    # Bikin folder otomatis kalau belum ada (buat amannya)
+    if not net_id or not password:
+        print("!! ERROR: File .env belum diisi dengan benar. Pastikan ada ETHOL_NET_ID dan ETHOL_PASSWORD.")
+        return
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    update_files([]) 
+    update_files([], student_name, student_class) 
 
     chrome_options = Options()
     chrome_options.add_argument("--headless=new") 
@@ -279,7 +289,7 @@ def main():
     wait = WebDriverWait(driver, 20)
 
     try:
-        print("\n[BACKGROUND MODE AKTIF] Memulai Auto-Sync ETHOL...")
+        print(f"\n[BACKGROUND MODE] Memulai Auto-Sync ETHOL untuk: {student_name}...")
         print(">> [1] Login CAS PENS...")
         driver.get("https://login.pens.ac.id/cas/login?service=http%3A%2F%2Fethol.pens.ac.id%2Fcas%2F")
         
@@ -320,7 +330,6 @@ def main():
         driver.execute_script("arguments[0].click();", dropdown)
         time.sleep(3) 
         
-        # Simpan screenshot ke dalam folder output
         screenshot_path = os.path.join(OUTPUT_DIR, "debug_hantu.png")
         driver.save_screenshot(screenshot_path)
         
@@ -375,7 +384,7 @@ def main():
                         count += 1
             
             print(f"-> Dapet {count} tugas." if count > 0 else "-> Kosong.")
-            update_files(all_tasks)
+            update_files(all_tasks, student_name, student_class)
 
         print("\n>> [4] Memulai Sinkronisasi Google Calendar...")
         sync_calendar(all_tasks)
