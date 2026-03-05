@@ -1,0 +1,12 @@
+# Rahasia Google
+credentials.json
+token.json
+
+# Folder hasil generate
+output/
+
+# File lokal
+run_ethol.bat
+__pycache__/
+*.pyc
+.env

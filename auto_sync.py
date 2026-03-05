@@ -1,5 +1,11 @@
 import json
 import time
+import os
+import os.path
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -9,10 +15,18 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+
+# Nama folder tempat nyimpen hasil generate
+OUTPUT_DIR = "output"
+
 def update_files(data):
-    import json
+    # Bikin folder otomatis kalau belum ada
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    with open('tugas.json', 'w', encoding='utf-8') as f:
+    # Simpan JSON ke dalam folder output
+    json_path = os.path.join(OUTPUT_DIR, 'tugas.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
         
     total_tugas = len(data) if data else 0
@@ -91,7 +105,6 @@ def update_files(data):
             badge_class = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" if is_done else "bg-rose-500/10 text-rose-400 border border-rose-500/20"
             status_text = t['status'].replace("✅ ", "").replace("⚠️ ", "")
             
-            # Indikator File
             has_file = 'file' in t and len(t['file']) > 0
             file_icon = '''<svg class="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>''' if has_file else ''
 
@@ -184,12 +197,10 @@ def update_files(data):
                 statusEl.innerText = task.status.replace("✅ ", "").replace("⚠️ ", "");
                 statusEl.className = `px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest ${{isDone ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}}`;
 
-                // Handle Render File
                 const filesSection = document.getElementById('modalFilesSection');
                 const filesList = document.getElementById('modalFilesList');
                 filesList.innerHTML = ''; 
                 
-                // Pastikan array file ada
                 const files = task.file || [];
                 
                 if (files.length > 0) {{
@@ -229,22 +240,46 @@ def update_files(data):
     </html>
     """
     
-    with open('index.html', 'w', encoding='utf-8') as f:
+    # Simpan HTML ke dalam folder output
+    html_path = os.path.join(OUTPUT_DIR, 'index.html')
+    with open(html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
 
 def main():
     net_id = "ahmadsyahani06@it.student.pens.ac.id"
     password = "Syahani06"
+    
+    # Bikin folder otomatis kalau belum ada (buat amannya)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    update_files([]) # Zero
+    update_files([]) 
 
     chrome_options = Options()
-    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--headless=new") 
+    chrome_options.add_argument("--window-size=1920,1080") 
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--log-level=3") 
+    
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': '''
+            Object.defineProperty(navigator, 'webdriver', {
+              get: () => undefined
+            })
+        '''
+    })
+    
     wait = WebDriverWait(driver, 20)
 
     try:
+        print("\n[BACKGROUND MODE AKTIF] Memulai Auto-Sync ETHOL...")
         print(">> [1] Login CAS PENS...")
         driver.get("https://login.pens.ac.id/cas/login?service=http%3A%2F%2Fethol.pens.ac.id%2Fcas%2F")
         
@@ -259,7 +294,6 @@ def main():
         print(">> [3] Melihat Daftar Tugas")
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, "v-select__selections")))
         
-        # JS
         driver.execute_script("""
             window.capturedTasks = [];
             const origSend = XMLHttpRequest.prototype.send;
@@ -267,7 +301,6 @@ def main():
                 this.addEventListener('load', function() {
                     try {
                         const data = JSON.parse(this.responseText);
-                        // Cek apakah response berupa array tugas (punya id dan title)
                         if (Array.isArray(data) && data.length > 0 && data[0].hasOwnProperty('title')) {
                             window.capturedTasks = data;
                         }
@@ -281,14 +314,28 @@ def main():
 
         print(">> Mengambil daftar Matkul...")
         dropdown = driver.find_element(By.CLASS_NAME, "v-select__selections")
+        
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", dropdown)
+        time.sleep(1)
         driver.execute_script("arguments[0].click();", dropdown)
-        time.sleep(2) 
+        time.sleep(3) 
         
-        items = driver.find_elements(By.CSS_SELECTOR, ".v-list-item__title")
-        matkul_list = [t.text.strip() for t in items if t.text.strip() and "Pilih" not in t.text.strip()]
+        # Simpan screenshot ke dalam folder output
+        screenshot_path = os.path.join(OUTPUT_DIR, "debug_hantu.png")
+        driver.save_screenshot(screenshot_path)
+        
+        items = driver.find_elements(By.CSS_SELECTOR, ".v-menu__content.menuable__content__active .v-list-item__title")
+        matkul_list = []
+        
+        ignore_words = ["Pilih", "Beranda", "Matakuliah", "Jadwal", "Tugas", "Ujian", "Keluar", "No data"]
+        
+        for t in items:
+            nama_matkul = t.text.strip()
+            if nama_matkul and not any(word in nama_matkul for word in ignore_words):
+                matkul_list.append(nama_matkul)
+                
         matkul_list = list(dict.fromkeys(matkul_list))
-        
-        print(f">> Terdeteksi {len(matkul_list)} Mata Kuliah.")
+        print(f">> Terdeteksi {len(matkul_list)} Mata Kuliah Asli.")
 
         for matkul in matkul_list:
             print(f">> Cek API: {matkul} ", end="")
@@ -299,7 +346,7 @@ def main():
             driver.execute_script("arguments[0].click();", dropdown)
             time.sleep(1)
             
-            menu_items = driver.find_elements(By.CLASS_NAME, "v-list-item")
+            menu_items = driver.find_elements(By.CSS_SELECTOR, ".v-menu__content.menuable__content__active .v-list-item")
             for item in menu_items:
                 if item.text.strip() == matkul:
                     driver.execute_script("arguments[0].click();", item)
@@ -322,19 +369,71 @@ def main():
                             "description": item.get("description", "Tidak ada deskripsi"),
                             "deadline": item.get("deadline_indonesia", item.get("deadline", "")),
                             "status": status,
-                            "file": item.get("file", []) 
+                            "file": item.get("file", []),
+                            "raw_deadline": item.get("deadline", ""), 
                         })
                         count += 1
             
             print(f"-> Dapet {count} tugas." if count > 0 else "-> Kosong.")
             update_files(all_tasks)
 
-        print("\n>> [SUCCESS] Berhasil Mendapatkan Data")
+        print("\n>> [4] Memulai Sinkronisasi Google Calendar...")
+        sync_calendar(all_tasks)
+
+        print("\n>> [SUCCESS] Selesai Mengambil dan Sinkronisasi Data!")
 
     except Exception as e:
         print(f"\n!! Waduh Error: {e}")
     finally:
         driver.quit()
+
+def sync_calendar(tasks):
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        
+        for t in tasks:
+            if "Selesai" in t['status'] or not t.get('raw_deadline'):
+                continue
+            
+            iso_time = t['raw_deadline'].replace(" ", "T") + "+07:00"
+            
+            event = {
+              'summary': f"[ETHOL] {t['judul']} - {t['matkul']}",
+              'description': f"{t['description']}\n\nStatus: Belum Dikerjakan ⚠️",
+              'start': { 'dateTime': iso_time, 'timeZone': 'Asia/Jakarta' },
+              'end': { 'dateTime': iso_time, 'timeZone': 'Asia/Jakarta' },
+              'reminders': {
+                'useDefault': False,
+                'overrides': [
+                  {'method': 'popup', 'minutes': 24 * 60}, 
+                  {'method': 'popup', 'minutes': 120},     
+                ],
+              },
+            }
+
+            events_result = service.events().list(calendarId='primary', q=t['judul']).execute()
+            
+            if not events_result.get('items', []):
+                service.events().insert(calendarId='primary', body=event).execute()
+                print(f"   [+] Masuk Kalender: {t['judul']}")
+            else:
+                print(f"   [~] Udah ada di kalender: {t['judul']}")
+
+    except Exception as e:
+        print(f"!! Error sinkronisasi kalender: {e}")
 
 if __name__ == "__main__":
     main()
